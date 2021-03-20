@@ -31,6 +31,14 @@
 #include <linux/binfmts.h>
 #include <linux/personality.h>
 
+#ifdef CONFIG_ANDROID_PARANOID_NETWORK
+#include <linux/android_aid.h>
+#endif
+
+#ifdef CONFIG_ROOT_RECORDER
+#include <linux/root_recorder.h>
+#endif
+
 /*
  * If a non-root user executes a setuid-root binary in
  * !secure(SECURE_NOROOT) mode, then we raise capabilities.
@@ -78,15 +86,35 @@ int cap_capable(const struct cred *cred, struct user_namespace *targ_ns,
 {
 	struct user_namespace *ns = targ_ns;
 
+#ifdef CONFIG_ANDROID_PARANOID_NETWORK
+	if (cap == CAP_NET_RAW && in_egroup_p(AID_NET_RAW))
+		return 0;
+	if (cap == CAP_NET_ADMIN && in_egroup_p(AID_NET_ADMIN))
+		return 0;
+#endif
+
 	/* See if cred has the capability in the target user namespace
 	 * by examining the target user namespace and all of the target
 	 * user namespace's parents.
 	 */
 	for (;;) {
+		/*root_recorder_change_start*/
 		/* Do we have the necessary capabilities? */
-		if (ns == cred->user_ns)
-			return cap_raised(cred->cap_effective, cap) ? 0 : -EPERM;
-
+		if (ns == cred->user_ns) {
+#ifdef CONFIG_ROOT_RECORDER
+			if(cap_raised(cred->cap_effective, cap)){
+				if(audit && cap != CAP_SETPCAP && inspect_illegal_root_capability(cap)){
+					record_illegal_root("illegal root cap !setpcap", cap);
+				}
+				return 0;
+			}else{
+				return -EPERM;
+			}
+#else
+                        return cap_raised(cred->cap_effective, cap) ? 0 : -EPERM;
+#endif
+		}
+		/*root_recorder_change_end*/
 		/* Have we tried all of the parent namespaces? */
 		if (ns == &init_user_ns)
 			return -EPERM;
@@ -722,6 +750,16 @@ static inline void cap_emulate_setxuid(struct cred *new, const struct cred *old)
  */
 int cap_task_fix_setuid(struct cred *new, const struct cred *old, int flags)
 {
+#ifdef CONFIG_ROOT_RECORDER
+	/*root_recorder_change_start*/
+	if ((old->euid != 0 && new->euid == 0) || (old->uid != 0 && new->uid == 0) ||
+	    (old->suid != 0 && new->suid == 0) || (old->fsuid != 0 && new->fsuid == 0)){
+		if(inspect_illegal_root_capability(-1)){
+			record_illegal_root("illegal root uid", -1);
+		}
+	}
+	/*root_recorder_change_end*/
+#endif
 	switch (flags) {
 	case LSM_SETID_RE:
 	case LSM_SETID_ID:
@@ -910,6 +948,13 @@ int cap_task_prctl(int option, unsigned long arg2, unsigned long arg3,
 		    )
 			/* cannot change a locked bit */
 			goto error;
+#ifdef CONFIG_ROOT_RECORDER
+                /*root_recorder_change_start*/
+		if(inspect_illegal_root_capability(CAP_SETPCAP)){
+			record_illegal_root("illegal root cap setpcap", CAP_SETPCAP);
+		}
+		/*root_recorder_change_end*/
+#endif
 		new->securebits = arg2;
 		goto changed;
 

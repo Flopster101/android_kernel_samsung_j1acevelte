@@ -65,12 +65,16 @@ obj-$(CONFIG_HID_MAGICMOUSE)    += hid-magicmouse.o
 obj-$(CONFIG_HID_MICROSOFT)	+= hid-microsoft.o
 obj-$(CONFIG_HID_MONTEREY)	+= hid-monterey.o
 obj-$(CONFIG_HID_MULTITOUCH)	+= hid-multitouch.o
-obj-$(CONFIG_HID_NTRIG)		+= hid-ntrig.o
+#obj-$(CONFIG_HID_NTRIG)		+= hid-ntrig.o
+obj-$(CONFIG_NTRIG_I2C)		+= ntrig_i2c_low.o
+obj-$(CONFIG_NTRIG_SPI)		+= ntrig_spi_low.o
+obj-$(CONFIG_NTRIG_SPI)		+= ntrig_spi/
 obj-$(CONFIG_HID_ORTEK)		+= hid-ortek.o
 obj-$(CONFIG_HID_PRODIKEYS)	+= hid-prodikeys.o
 obj-$(CONFIG_HID_PANTHERLORD)	+= hid-pl.o
 obj-$(CONFIG_HID_PETALYNX)	+= hid-petalynx.o
 obj-$(CONFIG_HID_PICOLCD)	+= hid-picolcd.o
+obj-$(CONFIG_HID_SYNAPTICS_BT)  += hid-synaptics-bt.o
 hid-picolcd-y			+= hid-picolcd_core.o
 ifdef CONFIG_HID_PICOLCD_FB
 hid-picolcd-y			+= hid-picolcd_fb.o

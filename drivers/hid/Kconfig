@@ -454,9 +454,30 @@ config HID_MULTITOUCH
 
 config HID_NTRIG
 	tristate "N-Trig touch screen"
-	depends on USB_HID
+    depends on HID
 	---help---
-	Support for N-Trig touch screen.
+	Generic support for N-Trig touch screen.
+
+config NTRIG_SPI
+	tristate "NTrig_SPI" if EMBEDDED
+	depends on HID_NTRIG
+	default !EMBEDDED
+	---help---
+	Support for N-Trig touch screen over spi bus.
+
+config NTRIG_I2C
+	tristate "NTrig_I2C" if EMBEDDED
+	depends on HID_NTRIG
+	default !EMBEDDED
+	---help---
+	Support for N-Trig touch screen over i2c bus.
+
+config NTRIG_USBHID
+	tristate "NTrig_USBHID" if EMBEDDED
+	depends on USB_HID && HID_NTRIG
+	default !EMBEDDED
+	---help---
+	Support for N-Trig touch screen over USB bus.
 
 config HID_ORTEK
 	tristate "Ortek PKB-1700/WKB-2000/Skycable wireless keyboard and mouse trackpad"
@@ -597,6 +618,14 @@ config HID_SAMSUNG
 	---help---
 	Support for Samsung InfraRed remote control or keyboards.
 
+config HID_SYNAPTICS_BT
+	tristate "HID Synaptics"
+	depends on HID
+	default n
+	---help---
+	For a Bluetooth HID touchpad
+
+    
 config HID_SONY
 	tristate "Sony PS3 controller"
 	depends on USB_HID

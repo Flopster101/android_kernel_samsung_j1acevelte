@@ -79,6 +79,9 @@ struct f_rndis {
 	struct usb_request		*notify_req;
 	atomic_t			notify_count;
 };
+static struct f_rndis *__rndis;
+
+static struct f_rndis *__rndis;
 
 static inline struct f_rndis *func_to_rndis(struct usb_function *f)
 {
@@ -408,8 +411,13 @@ static void rndis_response_available(void *_rndis)
 static void rndis_response_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_rndis			*rndis = req->context;
-	struct usb_composite_dev	*cdev = rndis->port.func.config->cdev;
+	struct usb_composite_dev	*cdev;
 	int				status = req->status;
+
+	if (!rndis->port.func.config || !rndis->port.func.config->cdev)
+		return;
+	else
+		cdev = rndis->port.func.config->cdev;
 
 	/* after TX:
 	 *  - USB_CDC_GET_ENCAPSULATED_RESPONSE (ep0/control)
@@ -448,6 +456,7 @@ static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_rndis			*rndis = req->context;
 	int				status;
+	rndis_init_msg_type		*buf;
 
 	/* received RNDIS command from USB_CDC_SEND_ENCAPSULATED_COMMAND */
 //	spin_lock(&dev->lock);
@@ -456,6 +465,16 @@ static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 		pr_err("RNDIS command error %d, %d/%d\n",
 			status, req->actual, req->length);
 //	spin_unlock(&dev->lock);
+	buf = (rndis_init_msg_type *)req->buf;
+
+	if (buf->MessageType == RNDIS_MSG_INIT) {
+
+		if (buf->MaxTransferSize > 2048)
+			rndis->port.multi_pkt_xfer = 1;
+		else
+			rndis->port.multi_pkt_xfer = 0;
+	}
+
 }
 
 static int
@@ -685,6 +704,16 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 
 	status = -ENODEV;
 
+	/* NOTE:  a status/notification endpoint is, strictly speaking,
+	 * optional.  We don't treat it that way though!  It's simpler,
+	 * and some newer profiles don't treat it as optional.
+	 */
+	ep = usb_ep_autoconfig(cdev->gadget, &fs_notify_desc);
+	if (!ep)
+		goto fail;
+	rndis->notify = ep;
+	ep->driver_data = cdev;	/* claim */
+
 	/* allocate instance-specific endpoints */
 	ep = usb_ep_autoconfig(cdev->gadget, &fs_in_desc);
 	if (!ep)
@@ -696,16 +725,6 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 	if (!ep)
 		goto fail;
 	rndis->port.out_ep = ep;
-	ep->driver_data = cdev;	/* claim */
-
-	/* NOTE:  a status/notification endpoint is, strictly speaking,
-	 * optional.  We don't treat it that way though!  It's simpler,
-	 * and some newer profiles don't treat it as optional.
-	 */
-	ep = usb_ep_autoconfig(cdev->gadget, &fs_notify_desc);
-	if (!ep)
-		goto fail;
-	rndis->notify = ep;
 	ep->driver_data = cdev;	/* claim */
 
 	status = -ENOMEM;
@@ -802,6 +821,7 @@ rndis_unbind(struct usb_configuration *c, struct usb_function *f)
 	usb_ep_free_request(rndis->notify, rndis->notify_req);
 
 	kfree(rndis);
+	__rndis = NULL;
 }
 
 /* Some controllers can't support RNDIS ... */
@@ -821,12 +841,12 @@ rndis_bind_config_vendor(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 	if (!can_support_rndis(c) || !ethaddr)
 		return -EINVAL;
 
-	if (rndis_string_defs[0].id == 0) {
-		/* ... and setup RNDIS itself */
-		status = rndis_init();
-		if (status < 0)
-			return status;
+	/* setup RNDIS itself */
+	status = rndis_init();
+	if (status < 0)
+		return status;
 
+	if (rndis_string_defs[0].id == 0) {
 		status = usb_string_ids_tab(c->cdev, rndis_string_defs);
 		if (status)
 			return status;
@@ -841,6 +861,8 @@ rndis_bind_config_vendor(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 	rndis = kzalloc(sizeof *rndis, GFP_KERNEL);
 	if (!rndis)
 		goto fail;
+
+	__rndis = rndis;
 
 	memcpy(rndis->ethaddr, ethaddr, ETH_ALEN);
 	rndis->vendorID = vendorID;

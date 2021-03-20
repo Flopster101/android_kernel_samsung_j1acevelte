@@ -221,7 +221,25 @@ extern struct page *__page_cache_alloc(gfp_t gfp);
 #else
 static inline struct page *__page_cache_alloc(gfp_t gfp)
 {
-	return alloc_pages(gfp, 0);
+	struct page *page;
+
+#ifndef CONFIG_SPRD_PAGERECORDER
+	page = alloc_pages(gfp, 0);
+#else
+	page = alloc_pages_nopagedebug(gfp, 0);
+#endif
+
+	if (page && is_cma_pageblock(page)) {
+#ifndef CONFIG_SPRD_PAGERECORDER
+		__free_page(page);
+		page = alloc_pages(gfp & ~__GFP_MOVABLE, 0);
+#else
+		__free_page_nopagedebug(page);
+		page = alloc_pages_nopagedebug(gfp & ~__GFP_MOVABLE, 0);
+#endif
+	}
+
+	return page;
 }
 #endif
 
